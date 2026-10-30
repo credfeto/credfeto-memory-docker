@@ -4,9 +4,12 @@
 # dynamic_conf.template.yml). Replace the host names, the backend address
 # (MEMORY_BACKEND below, the docker host running this stack) and the users.
 #
-# Each space gets its own basic-auth users, so an agent given the dev credential
-# can't reach netadmin, and the reverse. Users are htpasswd lines
-# (htpasswd -nbB user password).
+# Each space checks its own bearer token (traefik-api-token-middleware plugin),
+# so an agent given the dev token can't reach netadmin, and the reverse. Keep the
+# tokens out of git: substitute them from the Traefik hosts' .env when rendering
+# (e.g. ${MEMORY_DEV_TOKEN}). Generate one with: openssl rand -hex 32
+# The wiki keeps basic auth (htpasswd -nbB user password), since browsers can't
+# send a bearer token.
 http:
   routers:
     memory-dev-router:
@@ -48,17 +51,27 @@ http:
         prefixes:
           - /netadmin
     memory-dev-auth:
-      basicAuth:
-        users:
-          - "dev-agents:$2y$05$REPLACE_ME"
+      plugin:
+        traefik-api-token-middleware:
+          authenticationHeader: false
+          bearerHeader: true
+          bearerHeaderName: Authorization
+          removeHeadersOnSuccess: true
+          tokens:
+            - "${MEMORY_DEV_TOKEN}"
     memory-netadmin-auth:
-      basicAuth:
-        users:
-          - "netadmin:$2y$05$REPLACE_ME"
+      plugin:
+        traefik-api-token-middleware:
+          authenticationHeader: false
+          bearerHeader: true
+          bearerHeaderName: Authorization
+          removeHeadersOnSuccess: true
+          tokens:
+            - "${MEMORY_NETADMIN_TOKEN}"
     memory-wiki-auth:
       basicAuth:
         users:
-          - "mark:$2y$05$REPLACE_ME"
+          - "${MEMORY_WIKI_USERS}"
 
   services:
     memory-dev-service:

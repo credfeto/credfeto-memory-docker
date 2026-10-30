@@ -2,7 +2,7 @@
 # Sets up the shared memory stack on this host: clones the notes repo if it isn't
 # there yet, creates a folder per space, builds and starts the containers, then
 # registers each space's folder as its Basic Memory project.
-# Run from a clone of this repository after creating memory/.env: ./install
+# Run as root from a clone of this repository after creating memory/.env: ./install
 set -eu
 
 BASEDIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
@@ -31,6 +31,25 @@ for space in dev netadmin; do
     mkdir -p "$NOTES_DIR/$space"
     [ -e "$NOTES_DIR/$space/README.md" ] || printf '# %s\n\nNotes for the %s space.\n' "$space" "$space" > "$NOTES_DIR/$space/README.md"
 done
+
+# Only the Traefik hosts may reach the service ports. The stack uses host
+# networking, so these firewalld rules apply (published Docker ports would
+# bypass them). Needs firewalld running, as credfeto-setup-arch-vm sets up.
+firewall-cmd --state >/dev/null 2>&1 || { echo "install: firewalld is not running" >&2; exit 1; }
+TRAEFIK_HOSTS=$(env_value TRAEFIK_HOSTS)
+[ -n "$TRAEFIK_HOSTS" ] || { echo "install: TRAEFIK_HOSTS is not set in .env" >&2; exit 1; }
+for port in $(env_value MEMORY_DEV_PORT) $(env_value MEMORY_NETADMIN_PORT) $(env_value WIKI_PORT); do
+    for src in $TRAEFIK_HOSTS; do
+        case "$src" in
+            *:*) family=ipv6 ;;
+            *) family=ipv4 ;;
+        esac
+        rule="rule family=\"$family\" source address=\"$src\" port port=\"$port\" protocol=\"tcp\" accept"
+        firewall-cmd --permanent --query-rich-rule="$rule" >/dev/null 2>&1 \
+            || firewall-cmd --permanent --add-rich-rule="$rule" >/dev/null
+    done
+done
+firewall-cmd --reload >/dev/null
 
 cd "$STACK"
 docker compose up -d --build
