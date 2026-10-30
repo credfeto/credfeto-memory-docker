@@ -11,6 +11,7 @@ Please ADD ALL Changes to the UNRELEASED SECTION and not a specific release
 ## [Unreleased]
 ### Security
 ### Added
+- Shared agent memory stack: Basic Memory MCP servers per space, a Gollum wiki over all spaces, and a git backup sidecar
 ### Fixed
 ### Changed
 - SDK - Updated DotNet SDK to 10.0.403

@@ -1,0 +1,119 @@
+---
+# Shared agent memory: one Basic Memory MCP server per "space", a Gollum wiki
+# over all spaces, and a sidecar that commits and pushes the notes to git.
+#
+# Each space's container mounts ONLY its own folder of the notes repo, so one
+# space can never read or write another. Add a space by copying a
+# basic-memory-* service, its index volume and its Traefik router.
+name: credfeto-memory
+
+x-basic-memory: &basic-memory
+  image: ghcr.io/basicmachines-co/basic-memory:${BASIC_MEMORY_TAG:-latest}
+  restart: unless-stopped
+  command:
+    - basic-memory
+    - mcp
+    - --transport
+    - streamable-http
+    - --host
+    - 0.0.0.0
+    - --port
+    - "8000"
+  environment:
+    BASIC_MEMORY_DEFAULT_PROJECT: main
+    BASIC_MEMORY_SYNC_CHANGES: "true"
+    BASIC_MEMORY_SYNC_DELAY: "1000"
+    BASIC_MEMORY_LOG_LEVEL: ${BASIC_MEMORY_LOG_LEVEL:-INFO}
+  healthcheck:
+    test: ["CMD", "basic-memory", "--version"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 30s
+  networks:
+    - traefik
+
+services:
+  # Space "dev": Steward Warden and the orchestrator agents share it.
+  basic-memory-dev:
+    <<: *basic-memory
+    container_name: basic-memory-dev
+    volumes:
+      - ${NOTES_DIR:-./notes}/dev:/app/data
+      - bm-dev-index:/app/.basic-memory
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
+      traefik.http.routers.memory-dev.rule: Host(`${MEMORY_HOST}`) && PathPrefix(`/dev`)
+      traefik.http.routers.memory-dev.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.memory-dev.tls: "true"
+      traefik.http.routers.memory-dev.middlewares: memory-dev-auth,memory-dev-strip
+      traefik.http.middlewares.memory-dev-auth.basicauth.users: ${MEMORY_DEV_USERS}
+      traefik.http.middlewares.memory-dev-strip.stripprefix.prefixes: /dev
+      traefik.http.services.memory-dev.loadbalancer.server.port: "8000"
+
+  # Space "netadmin": the network admin agent only.
+  basic-memory-netadmin:
+    <<: *basic-memory
+    container_name: basic-memory-netadmin
+    volumes:
+      - ${NOTES_DIR:-./notes}/netadmin:/app/data
+      - bm-netadmin-index:/app/.basic-memory
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
+      traefik.http.routers.memory-netadmin.rule: Host(`${MEMORY_HOST}`) && PathPrefix(`/netadmin`)
+      traefik.http.routers.memory-netadmin.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.memory-netadmin.tls: "true"
+      traefik.http.routers.memory-netadmin.middlewares: memory-netadmin-auth,memory-netadmin-strip
+      traefik.http.middlewares.memory-netadmin-auth.basicauth.users: ${MEMORY_NETADMIN_USERS}
+      traefik.http.middlewares.memory-netadmin-strip.stripprefix.prefixes: /netadmin
+      traefik.http.services.memory-netadmin.loadbalancer.server.port: "8000"
+
+  # Mark's combined view: a git-backed Markdown wiki over every space.
+  wiki:
+    image: gollumwiki/gollum:${GOLLUM_TAG:-latest}
+    container_name: memory-wiki
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    command: ["--h1-title", "--allow-uploads", "dir"]
+    volumes:
+      - ${NOTES_DIR:-./notes}:/wiki
+    networks:
+      - traefik
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
+      traefik.http.routers.memory-wiki.rule: Host(`${WIKI_HOST}`)
+      traefik.http.routers.memory-wiki.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.memory-wiki.tls: "true"
+      traefik.http.routers.memory-wiki.middlewares: memory-wiki-auth
+      traefik.http.middlewares.memory-wiki-auth.basicauth.users: ${WIKI_USERS}
+      traefik.http.services.memory-wiki.loadbalancer.server.port: "4567"
+
+  # Commits whatever changed in the notes repo and pushes it, on a timer.
+  git-backup:
+    build: ./git-backup
+    container_name: memory-git-backup
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-300}
+      GIT_AUTHOR_NAME: ${BACKUP_GIT_NAME:-Memory Backup}
+      GIT_AUTHOR_EMAIL: ${BACKUP_GIT_EMAIL}
+      GIT_COMMITTER_NAME: ${BACKUP_GIT_NAME:-Memory Backup}
+      GIT_COMMITTER_EMAIL: ${BACKUP_GIT_EMAIL}
+      GIT_SSH_COMMAND: ssh -i /ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/known_hosts
+    volumes:
+      - ${NOTES_DIR:-./notes}:/notes
+      - ${BACKUP_SSH_KEY:?set BACKUP_SSH_KEY to the notes repo deploy key}:/ssh/id_ed25519:ro
+    network_mode: bridge
+
+volumes:
+  bm-dev-index:
+  bm-netadmin-index:
+
+networks:
+  traefik:
+    name: ${TRAEFIK_NETWORK:-traefik}
+    external: true

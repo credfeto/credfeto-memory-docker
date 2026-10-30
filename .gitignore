@@ -374,3 +374,6 @@ node_modules
 
 # Trivy
 result.json
+
+# Shared memory stack: local notes clone
+memory/notes/
