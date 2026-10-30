@@ -1,0 +1,75 @@
+---
+# Example Traefik file-provider config for the memory stack. Merge it into the
+# Traefik hosts' dynamic config (for example credfeto-traefik's
+# dynamic_conf.template.yml). Replace the host names, the backend address
+# (MEMORY_BACKEND below, the docker host running this stack) and the users.
+#
+# Each space gets its own basic-auth users, so an agent given the dev credential
+# can't reach netadmin, and the reverse. Users are htpasswd lines
+# (htpasswd -nbB user password).
+http:
+  routers:
+    memory-dev-router:
+      rule: "Host(`memory.example.com`) && PathPrefix(`/dev`)"
+      service: memory-dev-service
+      entryPoints:
+        - web-general
+      middlewares:
+        - internal-only
+        - memory-dev-auth
+        - memory-dev-strip
+
+    memory-netadmin-router:
+      rule: "Host(`memory.example.com`) && PathPrefix(`/netadmin`)"
+      service: memory-netadmin-service
+      entryPoints:
+        - web-general
+      middlewares:
+        - internal-only
+        - memory-netadmin-auth
+        - memory-netadmin-strip
+
+    memory-wiki-router:
+      rule: "Host(`memory-wiki.example.com`)"
+      service: memory-wiki-service
+      entryPoints:
+        - web-general
+      middlewares:
+        - internal-only
+        - memory-wiki-auth
+
+  middlewares:
+    memory-dev-strip:
+      stripPrefix:
+        prefixes:
+          - /dev
+    memory-netadmin-strip:
+      stripPrefix:
+        prefixes:
+          - /netadmin
+    memory-dev-auth:
+      basicAuth:
+        users:
+          - "dev-agents:$2y$05$REPLACE_ME"
+    memory-netadmin-auth:
+      basicAuth:
+        users:
+          - "netadmin:$2y$05$REPLACE_ME"
+    memory-wiki-auth:
+      basicAuth:
+        users:
+          - "mark:$2y$05$REPLACE_ME"
+
+  services:
+    memory-dev-service:
+      loadBalancer:
+        servers:
+          - url: "http://MEMORY_BACKEND:8101"
+    memory-netadmin-service:
+      loadBalancer:
+        servers:
+          - url: "http://MEMORY_BACKEND:8102"
+    memory-wiki-service:
+      loadBalancer:
+        servers:
+          - url: "http://MEMORY_BACKEND:8103"

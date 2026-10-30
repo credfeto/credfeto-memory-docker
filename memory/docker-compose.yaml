@@ -4,7 +4,13 @@
 #
 # Each space's container mounts ONLY its own folder of the notes repo, so one
 # space can never read or write another. Add a space by copying a
-# basic-memory-* service, its index volume and its Traefik router.
+# basic-memory-* service, its index volume and its port.
+#
+# Traefik runs on separate hosts, so nothing here talks to it. Each service
+# publishes a port on this host, and Traefik's file-provider config routes to it
+# (see traefik/dynamic.example.yml). The Basic Memory endpoints have no auth, so
+# bind them to an address only the Traefik hosts can reach (BIND_ADDRESS, plus a
+# firewall rule), and put the per-space auth in Traefik.
 name: credfeto-memory
 
 x-basic-memory: &basic-memory
@@ -30,8 +36,6 @@ x-basic-memory: &basic-memory
     timeout: 10s
     retries: 3
     start_period: 30s
-  networks:
-    - traefik
 
 services:
   # Space "dev": Steward Warden and the orchestrator agents share it.
@@ -41,16 +45,8 @@ services:
     volumes:
       - ${NOTES_DIR:-./notes}/dev:/app/data
       - bm-dev-index:/app/.basic-memory
-    labels:
-      traefik.enable: "true"
-      traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
-      traefik.http.routers.memory-dev.rule: Host(`${MEMORY_HOST}`) && PathPrefix(`/dev`)
-      traefik.http.routers.memory-dev.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
-      traefik.http.routers.memory-dev.tls: "true"
-      traefik.http.routers.memory-dev.middlewares: memory-dev-auth,memory-dev-strip
-      traefik.http.middlewares.memory-dev-auth.basicauth.users: ${MEMORY_DEV_USERS}
-      traefik.http.middlewares.memory-dev-strip.stripprefix.prefixes: /dev
-      traefik.http.services.memory-dev.loadbalancer.server.port: "8000"
+    ports:
+      - ${BIND_ADDRESS:-0.0.0.0}:${MEMORY_DEV_PORT:-8101}:8000
 
   # Space "netadmin": the network admin agent only.
   basic-memory-netadmin:
@@ -59,16 +55,8 @@ services:
     volumes:
       - ${NOTES_DIR:-./notes}/netadmin:/app/data
       - bm-netadmin-index:/app/.basic-memory
-    labels:
-      traefik.enable: "true"
-      traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
-      traefik.http.routers.memory-netadmin.rule: Host(`${MEMORY_HOST}`) && PathPrefix(`/netadmin`)
-      traefik.http.routers.memory-netadmin.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
-      traefik.http.routers.memory-netadmin.tls: "true"
-      traefik.http.routers.memory-netadmin.middlewares: memory-netadmin-auth,memory-netadmin-strip
-      traefik.http.middlewares.memory-netadmin-auth.basicauth.users: ${MEMORY_NETADMIN_USERS}
-      traefik.http.middlewares.memory-netadmin-strip.stripprefix.prefixes: /netadmin
-      traefik.http.services.memory-netadmin.loadbalancer.server.port: "8000"
+    ports:
+      - ${BIND_ADDRESS:-0.0.0.0}:${MEMORY_NETADMIN_PORT:-8102}:8000
 
   # Mark's combined view: a git-backed Markdown wiki over every space.
   wiki:
@@ -79,17 +67,8 @@ services:
     command: ["--h1-title", "--allow-uploads", "dir"]
     volumes:
       - ${NOTES_DIR:-./notes}:/wiki
-    networks:
-      - traefik
-    labels:
-      traefik.enable: "true"
-      traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
-      traefik.http.routers.memory-wiki.rule: Host(`${WIKI_HOST}`)
-      traefik.http.routers.memory-wiki.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
-      traefik.http.routers.memory-wiki.tls: "true"
-      traefik.http.routers.memory-wiki.middlewares: memory-wiki-auth
-      traefik.http.middlewares.memory-wiki-auth.basicauth.users: ${WIKI_USERS}
-      traefik.http.services.memory-wiki.loadbalancer.server.port: "4567"
+    ports:
+      - ${BIND_ADDRESS:-0.0.0.0}:${WIKI_PORT:-8103}:4567
 
   # Commits whatever changed in the notes repo and pushes it, on a timer.
   git-backup:
@@ -107,13 +86,7 @@ services:
     volumes:
       - ${NOTES_DIR:-./notes}:/notes
       - ${BACKUP_SSH_KEY:?set BACKUP_SSH_KEY to the notes repo deploy key}:/ssh/id_ed25519:ro
-    network_mode: bridge
 
 volumes:
   bm-dev-index:
   bm-netadmin-index:
-
-networks:
-  traefik:
-    name: ${TRAEFIK_NETWORK:-traefik}
-    external: true

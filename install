@@ -42,4 +42,4 @@ for space in dev netadmin; do
     docker exec "$container" basic-memory reindex 2>/dev/null || true
 done
 
-echo "install: done. MCP endpoints: https://<MEMORY_HOST>/dev/mcp and /netadmin/mcp; wiki: https://<WIKI_HOST>/"
+echo "install: done. Ports: dev $(env_value MEMORY_DEV_PORT), netadmin $(env_value MEMORY_NETADMIN_PORT), wiki $(env_value WIKI_PORT). Add the Traefik routes from traefik/dynamic.example.yml."
