@@ -14,6 +14,7 @@ Please ADD ALL Changes to the UNRELEASED SECTION and not a specific release
 - Shared agent memory stack: Basic Memory MCP servers per space, a Gollum wiki over all spaces, and a git backup sidecar
 ### Fixed
 ### Changed
+- Memory stack publishes ports for Traefik on separate hosts instead of using Docker labels, with an example file-provider config
 - SDK - Updated DotNet SDK to 10.0.403
 ### Deprecated
 ### Removed
