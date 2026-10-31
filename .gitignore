@@ -374,6 +374,3 @@ node_modules
 
 # Trivy
 result.json
-
-# Notes repo clone made by ./install
-memory/notes/
