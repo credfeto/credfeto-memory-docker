@@ -1,7 +1,7 @@
 ---
 version: 2
 updates:
-  - package-ecosystem: github-actions
+  - package-ecosystem: docker
     directory: "/"
     schedule:
       interval: daily
@@ -13,7 +13,7 @@ updates:
     commit-message:
       prefix: "[Dependencies]"
     labels:
-      - "github-actions"
+      - "docker"
       - "dependencies"
       - "Changelog Not Required"
     allow:
