@@ -1,0 +1,88 @@
+---
+# Example Traefik file-provider config for the memory stack. Merge it into the
+# Traefik hosts' dynamic config (for example credfeto-traefik's
+# dynamic_conf.template.yml). Replace the host names, the backend address
+# (MEMORY_BACKEND below, the docker host running this stack) and the users.
+#
+# Each space checks its own bearer token (traefik-api-token-middleware plugin),
+# so an agent given the dev token can't reach netadmin, and the reverse. Keep the
+# tokens out of git: substitute them from the Traefik hosts' .env when rendering
+# (e.g. ${MEMORY_DEV_TOKEN}). Generate one with: openssl rand -hex 32
+# The wiki keeps basic auth (htpasswd -nbB user password), since browsers can't
+# send a bearer token.
+http:
+  routers:
+    memory-dev-router:
+      rule: "Host(`memory.example.com`) && PathPrefix(`/dev`)"
+      service: memory-dev-service
+      entryPoints:
+        - web-general
+      middlewares:
+        - internal-only
+        - memory-dev-auth
+        - memory-dev-strip
+
+    memory-netadmin-router:
+      rule: "Host(`memory.example.com`) && PathPrefix(`/netadmin`)"
+      service: memory-netadmin-service
+      entryPoints:
+        - web-general
+      middlewares:
+        - internal-only
+        - memory-netadmin-auth
+        - memory-netadmin-strip
+
+    memory-wiki-router:
+      rule: "Host(`memory-wiki.example.com`)"
+      service: memory-wiki-service
+      entryPoints:
+        - web-general
+      middlewares:
+        - internal-only
+        - memory-wiki-auth
+
+  middlewares:
+    memory-dev-strip:
+      stripPrefix:
+        prefixes:
+          - /dev
+    memory-netadmin-strip:
+      stripPrefix:
+        prefixes:
+          - /netadmin
+    memory-dev-auth:
+      plugin:
+        traefik-api-token-middleware:
+          authenticationHeader: false
+          bearerHeader: true
+          bearerHeaderName: Authorization
+          removeHeadersOnSuccess: true
+          tokens:
+            - "${MEMORY_DEV_TOKEN}"
+    memory-netadmin-auth:
+      plugin:
+        traefik-api-token-middleware:
+          authenticationHeader: false
+          bearerHeader: true
+          bearerHeaderName: Authorization
+          removeHeadersOnSuccess: true
+          tokens:
+            - "${MEMORY_NETADMIN_TOKEN}"
+    memory-wiki-auth:
+      basicAuth:
+        users:
+          - "${MEMORY_WIKI_USERS}"
+
+  services:
+    memory-dev-service:
+      loadBalancer:
+        servers:
+          - url: "http://MEMORY_BACKEND:8101"
+    memory-netadmin-service:
+      loadBalancer:
+        servers:
+          - url: "http://MEMORY_BACKEND:8102"
+    memory-wiki-service:
+      loadBalancer:
+        servers:
+          - url: "http://MEMORY_BACKEND:8103"

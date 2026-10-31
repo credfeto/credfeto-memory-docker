@@ -12,21 +12,28 @@ All of it lives in [`memory/`](memory/), in one compose stack:
 
 The notes themselves are in a separate private repo (`NOTES_REPO`). This repo holds only the stack.
 
-## Security
+## Security and Traefik
 
-The Basic Memory HTTP endpoints have **no authentication of their own**. Every route goes through Traefik with its own basic-auth users (`MEMORY_DEV_USERS`, `MEMORY_NETADMIN_USERS`, `WIKI_USERS`), so each space has its own credential. Don't publish port 8000 directly.
+Traefik runs on separate hosts, so this stack doesn't talk to it. Each service listens on its own port on the docker host (`MEMORY_DEV_PORT`, `MEMORY_NETADMIN_PORT`, `WIKI_PORT`) using host networking, and Traefik's file-provider config routes to it. [`traefik/dynamic.example.yml`](traefik/dynamic.example.yml) has the routers, services and middlewares to merge into the Traefik hosts' dynamic config.
+
+The Basic Memory HTTP endpoints have **no authentication of their own**. So:
+
+- each space's route in Traefik checks its own **bearer token** (`Authorization: Bearer <token>`, via the `traefik-api-token-middleware` plugin), alongside the usual internal-only allow list, so a dev token can't reach netadmin. The wiki uses basic auth, since a browser can't send a bearer token;
+- `./install` adds firewalld rich rules so **only `TRAEFIK_HOSTS`** can connect to the service ports, so nothing can bypass Traefik.
+
+Why host networking: ports published with `ports:` go through Docker's own nftables chains and firewalld's `docker-forwarding` policy, so firewalld zone rules don't apply to them and anyone on the network could reach the unauthenticated endpoints. With host networking they're ordinary inbound connections that the firewalld rules control. Check it from a host that isn't a Traefik host: `curl -m 5 http://<docker host>:8101/mcp` must time out.
 
 ## Install
 
 1. Create the private notes repo and add a read/write deploy key for it.
 2. `cp memory/.env.example memory/.env` and fill it in.
-3. `./install`. It clones the notes repo, creates `dev/` and `netadmin/`, starts the stack and registers each space's folder as its `main` project.
+3. `./install` (as root; needs firewalld running, as on a credfeto-setup-arch-vm host). It opens the service ports to `TRAEFIK_HOSTS` only, clones the notes repo, creates `dev/` and `netadmin/`, starts the stack and registers each space's folder as its `main` project.
 
-MCP endpoints: `https://$MEMORY_HOST/dev/mcp` and `https://$MEMORY_HOST/netadmin/mcp` (Basic Memory serves streamable HTTP on `/mcp`; the route prefix picks the space). Wiki: `https://$WIKI_HOST/`.
+Then add the routes from `traefik/dynamic.example.yml` to the Traefik hosts. MCP endpoints: `https://<memory host>/dev/mcp` and `/netadmin/mcp` (Basic Memory serves streamable HTTP on `/mcp`; Traefik strips the space prefix). Wiki: `https://<wiki host>/`.
 
 ## Adding a space
 
-Copy a `basic-memory-*` service in `memory/docker-compose.yaml` and change its folder, index volume, router and middleware names, and its users variable. Then add the folder name to the `for space in …` loops in `install`.
+Copy a `basic-memory-*` service in `memory/docker-compose.yaml` and change its folder, index volume and port, and add a matching router, middlewares and service in the Traefik config. Then add the folder name to the `for space in …` loops in `install`.
 
 ## Changelog
 
