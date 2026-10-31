@@ -76,7 +76,7 @@ services:
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"
     network_mode: host
-    command: ["--host", "${BIND_ADDRESS:-0.0.0.0}", "--port", "${WIKI_PORT:-8103}", "--h1-title", "--allow-uploads", "/wiki"]
+    command: ["--host", "${BIND_ADDRESS:-0.0.0.0}", "--port", "${WIKI_PORT:-8103}", "--h1-title", "--allow-uploads", "dir", "/wiki"]
     volumes:
       - ${NOTES_DIR:-./notes}:/wiki
 
