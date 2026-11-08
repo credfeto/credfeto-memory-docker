@@ -15,6 +15,7 @@ Please ADD ALL Changes to the UNRELEASED SECTION and not a specific release
 ### Changed
 ### Deprecated
 ### Removed
+- Removed unused .NET global.json and template solution (src/global.json, src/Credfeto.Template.slnx) - issue #4
 ### Deployment Changes
 
 <!--
