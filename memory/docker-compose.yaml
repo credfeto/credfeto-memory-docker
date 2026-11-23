@@ -82,7 +82,9 @@ services:
 
   # Commits whatever changed in the notes repo and pushes it, on a timer.
   git-backup:
-    build: ./git-backup
+    # Built and published by .github/workflows/build-git-backup-docker-image.yml
+    # whenever memory/git-backup/ changes, so watchtower can update it like the others.
+    image: ghcr.io/credfeto/memory-git-backup:latest
     container_name: memory-git-backup
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"

@@ -15,6 +15,7 @@ Please ADD ALL Changes to the UNRELEASED SECTION and not a specific release
 ### Added
 ### Fixed
 ### Changed
+- The git-backup image is built and published to ghcr.io/credfeto/memory-git-backup by a workflow whenever memory/git-backup/ changes, and docker-compose pulls it from there instead of building it locally, so watchtower can update it
 ### Deprecated
 ### Removed
 - Removed unused .NET global.json and template solution (src/global.json, src/Credfeto.Template.slnx) - issue #4

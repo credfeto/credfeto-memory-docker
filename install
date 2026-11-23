@@ -1,6 +1,6 @@
 #! /bin/sh
 # Sets up the shared memory stack on this host: clones the notes repo if it isn't
-# there yet, creates a folder per space, builds and starts the containers, then
+# there yet, creates a folder per space, pulls and starts the containers, then
 # registers each space's folder as its Basic Memory project.
 # Run as root from a clone of this repository after creating memory/.env: ./install
 set -eu
@@ -52,7 +52,7 @@ done
 firewall-cmd --reload >/dev/null
 
 cd "$STACK"
-docker compose up -d --build
+docker compose pull && docker compose up -d
 
 for space in dev netadmin; do
     container="basic-memory-$space"
