@@ -10,6 +10,7 @@ Please ADD ALL Changes to the UNRELEASED SECTION and not a specific release
 
 ## [Unreleased]
 ### Security
+- `TRAEFIK_HOSTS` in `memory/.env.example` lists only the reverse proxies' DMZ VLAN addresses; their old Servers VLAN addresses are retired
 - `TRAEFIK_HOSTS` in `memory/.env.example` lists the reverse proxies' DMZ VLAN addresses (192.168.140.250/.251 and 2a02:8010:61d5:140::250/251) alongside their Servers VLAN ones, so the proxies can reach Basic Memory and the wiki from either network
 ### Added
 ### Fixed
