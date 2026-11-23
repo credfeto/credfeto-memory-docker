@@ -10,8 +10,10 @@ STACK="$BASEDIR/memory"
 
 [ -f "$STACK/.env" ] || { echo "install: create $STACK/.env from .env.example first" >&2; exit 1; }
 
+# Prints the last value set for key $1 in .env, without one pair of surrounding
+# double or single quotes (as Docker Compose reads it).
 env_value() {
-    sed -n "s/^$1=//p" "$STACK/.env" | tail -n 1
+    sed -n "s/^$1=//p" "$STACK/.env" | tail -n 1 | sed -e 's/^"\(.*\)"$/\1/' -e t -e "s/^'\\(.*\\)'\$/\\1/"
 }
 
 NOTES_DIR=$(env_value NOTES_DIR)
