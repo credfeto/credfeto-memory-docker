@@ -20,7 +20,7 @@ name: credfeto-memory
 
 x-basic-memory: &basic-memory
   image: ghcr.io/basicmachines-co/basic-memory:${BASIC_MEMORY_TAG:-latest}
-  restart: unless-stopped
+  restart: always
   network_mode: host
   environment:
     BASIC_MEMORY_DEFAULT_PROJECT: main
@@ -73,7 +73,7 @@ services:
   wiki:
     image: gollumwiki/gollum:${GOLLUM_TAG:-latest}
     container_name: memory-wiki
-    restart: unless-stopped
+    restart: always
     user: "${PUID:-1000}:${PGID:-1000}"
     network_mode: host
     command: ["--host", "${BIND_ADDRESS:-0.0.0.0}", "--port", "${WIKI_PORT:-8103}", "--h1-title", "--allow-uploads", "dir", "/wiki"]
@@ -86,7 +86,7 @@ services:
     # whenever memory/git-backup/ changes, so watchtower can update it like the others.
     image: ghcr.io/credfeto/memory-git-backup:latest
     container_name: memory-git-backup
-    restart: unless-stopped
+    restart: always
     user: "${PUID:-1000}:${PGID:-1000}"
     environment:
       BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-300}

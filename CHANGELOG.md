@@ -16,6 +16,7 @@ Please ADD ALL Changes to the UNRELEASED SECTION and not a specific release
 ### Fixed
 - git-backup: retry a failed backup round once after BACKUP_RETRY_SECONDS (default 30) so a transient DNS or network blip doesn't fail the round, and log when a round succeeds after a failure so the last log line reflects the current state
 ### Changed
+- All containers use `restart: always` instead of `unless-stopped`, so a container stopped during a reboot or daemon restart is always brought back (an unless-stopped container was left down after a clean reboot)
 - The git-backup image is built and published to ghcr.io/credfeto/memory-git-backup by a workflow whenever memory/git-backup/ changes, and docker-compose pulls it from there instead of building it locally, so watchtower can update it
 ### Deprecated
 ### Removed
