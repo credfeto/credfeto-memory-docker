@@ -1,0 +1,97 @@
+#!/bin/sh
+
+# Locks the memory server's egress down. Called by ../install as root, and by
+# firewall/sync when the firewall config in the repo changes.
+#
+# Egress: one nftables table, inet mem_egress, built and loaded by
+# firewall/egress (see there): host_out for what the host itself (and the
+# host-networked Basic Memory and wiki containers) may connect to, docker_fwd
+# for what the bridged containers (git-backup) may connect to. The whole
+# table, address sets included, is replaced in one nft transaction, so a
+# refresh never reloads firewalld and a failed load keeps the previous rules.
+#
+# MEMORY_FIREWALL_ENFORCE=true in ../memory/.env is the single enforcement
+# knob: the table then drops what it does not allow. Otherwise (the default)
+# unmatched traffic still flows and is only logged, with the prefixes
+# "mem-egress-unmatched: " and "mem-egress-docker-unmatched: ". The same
+# rules serve both modes: run in observation mode, check the log for anything
+# legitimate, then enforce.
+#
+# Ingress is not handled here. The stack publishes no Docker ports (host
+# networking), so the service ports are ordinary inbound traffic and the
+# firewalld rich rules ../install adds (TRAEFIK_HOSTS only) apply to them.
+# SSH to the host is the public zone's own rule set, managed by the host's
+# base configuration.
+
+set -eu
+
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+info() {
+    printf '\n\033[32m→\033[0m %s\n' "$*"
+}
+
+[ "$(id -u)" -eq 0 ] || die "must run as root"
+
+# One run at a time: mem-firewall-sync.timer can fire while ../install (or a
+# manual run) is still configuring.
+exec 9> /run/lock/credfeto-memory-docker-firewall.lock
+flock 9
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ENV_FILE="${SCRIPT_DIR}/../memory/.env"
+# Keep the paths in sync with firewall/egress and firewall/sync.
+STATE_DIR="/var/lib/credfeto-memory-docker"
+SHARE_DIR="/usr/local/share/credfeto-memory-docker"
+
+# Prints the last value set for key $1 in .env, without one pair of
+# surrounding double or single quotes (as Docker Compose reads it).
+env_value() {
+    [ -f "${ENV_FILE}" ] || return 0
+    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "${ENV_FILE}" | tail -n 1 \
+        | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e t -e "s/^'\\(.*\\)'\$/\\1/"
+}
+
+ENFORCE="false"
+if [ "$(env_value MEMORY_FIREWALL_ENFORCE)" = "true" ]; then
+    ENFORCE="true"
+fi
+
+info "Configuring the egress firewall (enforce ${ENFORCE})..."
+
+# --- The egress table and its refresh timer ---
+install -m 755 "${SCRIPT_DIR}/egress" /usr/local/bin/mem-egress
+install -d -m 755 "${SHARE_DIR}"
+install -m 644 "${SCRIPT_DIR}/github-egress-ranges" "${SHARE_DIR}/github-egress-ranges"
+install -m 644 "${SCRIPT_DIR}/cloudflare-egress-ranges" "${SHARE_DIR}/cloudflare-egress-ranges"
+install -m 644 "${SCRIPT_DIR}/mem-egress-refresh.service" /etc/systemd/system/mem-egress-refresh.service
+install -m 644 "${SCRIPT_DIR}/mem-egress-refresh.timer" /etc/systemd/system/mem-egress-refresh.timer
+# The setting firewall/egress reads, written before the timers restart so
+# that no run picks up a stale one.
+install -d -m 755 "${STATE_DIR}"
+printf '%s\n' "${ENFORCE}" > "${STATE_DIR}/egress-enforce"
+
+systemctl daemon-reload
+systemctl enable mem-egress-refresh.timer > /dev/null 2>&1
+systemctl restart mem-egress-refresh.timer
+# Load the table now rather than at the timer's first run.
+/usr/local/bin/mem-egress || die "Failed to load the egress table"
+
+# --- Keep the firewall in step with the repo: firewall/sync pulls and re-runs
+# this script when the firewall config changes, e.g. the daily egress-ranges
+# commit. A symlink, so the script finds the checkout it lives in.
+ln -sfn "${SCRIPT_DIR}/sync" /usr/local/sbin/mem-firewall-sync
+install -m 644 "${SCRIPT_DIR}/mem-firewall-sync.service" /etc/systemd/system/mem-firewall-sync.service
+install -m 644 "${SCRIPT_DIR}/mem-firewall-sync.timer" /etc/systemd/system/mem-firewall-sync.timer
+systemctl daemon-reload
+systemctl enable mem-firewall-sync.timer > /dev/null 2>&1
+systemctl restart mem-firewall-sync.timer
+
+# Record the commit whose firewall config is now live; firewall/sync compares
+# against it.
+git -C "${SCRIPT_DIR}" rev-parse HEAD > "${STATE_DIR}/firewall-applied-head"
+
+info "Egress firewall configured (enforce ${ENFORCE})."

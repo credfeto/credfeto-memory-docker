@@ -23,6 +23,36 @@ The Basic Memory HTTP endpoints have **no authentication of their own**. So:
 
 Why host networking: ports published with `ports:` go through Docker's own nftables chains and firewalld's `docker-forwarding` policy, so firewalld zone rules don't apply to them and anyone on the network could reach the unauthenticated endpoints. With host networking they're ordinary inbound connections that the firewalld rules control. Check it from a host that isn't a Traefik host: `curl -m 5 http://<docker host>:8101/mcp` must time out.
 
+## Host firewall
+
+`./install` also runs `firewall/configure`, which locks down what the host may connect to, the same way as the key, DNS and monitoring servers. Ingress stays as above: the stack publishes no Docker ports, so the firewalld rules for `TRAEFIK_HOSTS` cover the service ports.
+
+| Filter                               | Traffic                                      | Allowed                                                                                                                                                                                                                  |
+|--------------------------------------|----------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `host_out` (nftables `mem_egress`)   | host, Basic Memory and the wiki -> anywhere  | DNS to the fleet's DNS servers, NTP to the router, HTTPS to the proxies (docker-cache, pacman, monitoring), journald uploads and syslog to monitoring, GitHub, ghcr.io, Docker Hub, Cloudflare, pkgstats, the Arch WKD, ICMP |
+| `docker_fwd` (nftables `mem_egress`) | git-backup -> outside world                  | DNS, GitHub over SSH                                                                                                                                                                                                     |
+
+Basic Memory and the wiki use host networking, so their outbound traffic is the host's. The table is replaced in a single `nft -f` transaction, so a refresh never makes firewalld reload, and a ruleset that fails to load leaves the previous one in place.
+
+Two timers keep it current:
+
+* `mem-egress-refresh.timer` (30 seconds after boot, then every 10 minutes) rebuilds the address sets for destinations without a stable address: names resolved from DNS (each address stays allowed for 7 days after it was last seen), plus GitHub's and Cloudflare's published ranges (`firewall/github-egress-ranges` and `firewall/cloudflare-egress-ranges`). It only loads the table when it differs from the loaded one.
+* `mem-firewall-sync.timer` (every 15 minutes) pulls the checkout and re-runs `firewall/configure` when anything under `firewall/` changed since the commit it last applied. Container and compose changes still wait for `./install`.
+
+The `Repo: Update egress ranges` workflow regenerates the two range files daily and commits any change to main, refusing a list that has shrunk by more than a fifth.
+
+`MEMORY_FIREWALL_ENFORCE` in `memory/.env` is the only switch. Unset or anything other than `true` is observation mode: every rule is in place, but traffic that matches none of them still flows and is logged with the prefix `mem-egress-unmatched:` or `mem-egress-docker-unmatched:` (rate-limited to 30 a minute). Run in observation mode first and check the journal for anything legitimate that is not covered:
+
+```sh
+sudo journalctl -k --since -1d | grep -E 'mem-egress-[a-z-]*unmatched'
+```
+
+then set `MEMORY_FIREWALL_ENFORCE=true` and run `sudo firewall/configure` (or `./install`). Straight after enforcing, check that the MCP endpoints still answer through Traefik and that git-backup still pushes (`docker logs memory-git-backup`). To see the live rules:
+
+```sh
+sudo nft list table inet mem_egress
+```
+
 ## Install
 
 1. Create the private notes repo and add a read/write deploy key for it.

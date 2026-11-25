@@ -10,9 +10,11 @@ Please ADD ALL Changes to the UNRELEASED SECTION and not a specific release
 
 ## [Unreleased]
 ### Security
+- Host egress firewall (`firewall/configure`, run by `install`): one nftables table (`inet mem_egress`), loaded atomically by `firewall/egress`, limits what the host, the host-networked Basic Memory and wiki containers, and git-backup may connect to (DNS, NTP, the proxies, monitoring, GitHub, ghcr.io, Docker Hub, the Arch services), with CDN-fronted destinations resolved every 10 minutes by `mem-egress-refresh.timer` and kept for 7 days. `mem-firewall-sync.timer` pulls the repo and re-applies it when the firewall config changes. Observation mode (log unmatched traffic, drop nothing) until `MEMORY_FIREWALL_ENFORCE=true`
 - `TRAEFIK_HOSTS` in `memory/.env.example` lists only the reverse proxies' DMZ VLAN addresses; their old Servers VLAN addresses are retired
 - `TRAEFIK_HOSTS` in `memory/.env.example` lists the reverse proxies' DMZ VLAN addresses (192.168.140.250/.251 and 2a02:8010:61d5:140::250/251) alongside their Servers VLAN ones, so the proxies can reach Basic Memory and the wiki from either network
 ### Added
+- `Repo: Update egress ranges` workflow regenerates the GitHub and Cloudflare egress ranges daily and commits them to main, refusing a list that shrank by more than a fifth
 ### Fixed
 - git-backup: retry a failed backup round once after BACKUP_RETRY_SECONDS (default 30) so a transient DNS or network blip doesn't fail the round, and log when a round succeeds after a failure so the last log line reflects the current state
 ### Changed

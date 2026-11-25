@@ -63,4 +63,9 @@ for space in dev netadmin; do
     docker exec "$container" basic-memory reindex 2>/dev/null || true
 done
 
+# Egress lockdown (nftables table inet mem_egress); observation mode (log
+# only) unless MEMORY_FIREWALL_ENFORCE=true in .env. See README.md, "Host
+# firewall".
+"$BASEDIR/firewall/configure" || { echo "install: failed to configure the egress firewall" >&2; exit 1; }
+
 echo "install: done. Ports: dev $(env_value MEMORY_DEV_PORT), netadmin $(env_value MEMORY_NETADMIN_PORT), wiki $(env_value WIKI_PORT). Add the Traefik routes from traefik/dynamic.example.yml."
